@@ -386,6 +386,17 @@ class QPhotoViewer(QGraphicsView):
             rect['y1'] += delta_y
             rect['x2'] += delta_x
             rect['y2'] += delta_y
+
+        self.focus_rect = []
+
+        lines = self.lines
+        self.parent.new_mva_lines.setPlainText("")
+        for x1, y1, x2, y2 in lines:
+            pt1 = self.coorToLatLong(x1, y1)
+            pt2 = self.coorToLatLong(x2, y2)
+            new_line = f"{self.parent.edit_prefix.text()} {pt1[0]} {pt1[1]} {pt2[0]} {pt2[1]}"
+            self.parent.new_mva_lines.appendPlainText(new_line)
+
         self.drag_to_edit = None
 
     def endSetBoundary(self, editLL=True):
