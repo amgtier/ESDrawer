@@ -70,17 +70,17 @@ class App(QMainWindow):
         set_cropll = QAction("Crop Lat/Long Range", self)
         set_setll = QAction("Set Lat/Long Range", self)
         self.show_ll = QAction("Show Lat/Long Range", self, checkable=True)
-        edit_ll = QAction("Edit Lat/Long Range", self, checkable=True)
+        self.edit_ll = QAction("Edit Lat/Long Range", self, checkable=True)
         # show_ll.setChecked(True)
         # self.main_frame.background.showBoundary(True)
         set_cropll.triggered.connect(self.main_frame.background.setBoundary)
         set_setll.triggered.connect(self.main_frame.background.set_lat_long.exec_)
         self.show_ll.triggered.connect(self.main_frame.background.showBoundary)
-        # edit_ll.triggered.connect(self.main_frame.background.editBoundary)
+        self.edit_ll.triggered.connect(self.main_frame.background.editBoundary)
         llsetings.addAction(set_cropll)
         llsetings.addAction(set_setll)
         llsetings.addAction(self.show_ll)
-        # llsetings.addAction(edit_ll)
+        llsetings.addAction(self.edit_ll)
         
         views = QMenu("View", self)
         set_tmask = QAction("Set Transparent Mask", self, checkable=True)
@@ -104,26 +104,26 @@ class App(QMainWindow):
         self.loaded_mva_text = txt
         self.main_frame.background.setLoadedMVAText(txt)
 
-    def dragEnterEvent(self, event):
-        m = event.mimeData()
-        if m.hasUrls():
-            event.accept()
-        else:
-            print("ignore")
-            event.ignore()
+    # def dragEnterEvent(self, event):
+    #     m = event.mimeData()
+    #     if m.hasUrls():
+    #         event.accept()
+    #     else:
+    #         print("ignore")
+    #         event.ignore()
 
-    def dropEvent(self, event):
-        m = event.mimeData()
-        if m.hasUrls():
-            print(m.urls()[0].toLocalFile())
-            self.main_frame.setBackgroundPath(m.urls()[0].toLocalFile())
+    # def dropEvent(self, event):
+    #     m = event.mimeData()
+    #     if m.hasUrls():
+    #         print(m.urls()[0].toLocalFile())
+    #         self.main_frame.setBackgroundPath(m.urls()[0].toLocalFile())
 
     def loadBackgroundFile(self):
         options = QFileDialog.Options()
         file, _ = QFileDialog.getOpenFileName(self, 
             "Select Background Image", 
-            "", 
-            "All files(*);;", 
+            "~/Download/", 
+            "Images (*.png; *.jpg);;All files(*)", 
             options=options
             )
         if file:

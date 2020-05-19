@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QApplication, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QFrame
 from PyQt5.QtCore import Qt, QRectF, QLineF, QPoint
-from PyQt5.QtGui import QBrush, QColor, QPixmap, QPen, QPainter, QCursor
+from PyQt5.QtGui import QBrush, QColor, QPixmap, QPen, QPainter, QCursor, QFont, QTextCursor
 
 import utils
 from set_lat_long import QSetLatLong
@@ -16,6 +16,7 @@ DRAG_EDIT_RANGE = 10
 class QPhotoViewer(QGraphicsView): 
     def __init__(self, parent):
         super().__init__()
+        self.setAcceptDrops(True)
         self.parent = parent
         self._zoom = 0
         self._empty = True
@@ -51,6 +52,7 @@ class QPhotoViewer(QGraphicsView):
         self.trans_mask = None
         self.trans_mask_set = False
         self.lines = []
+        self.texts = []
         self.show_loaded_mva = False
         self.loaded_mva = []
         self.focus_rect = []
@@ -127,12 +129,19 @@ class QPhotoViewer(QGraphicsView):
             self.drag_to_move = self.mapToScene(event.pos())
             self.setCursor(Qt.ClosedHandCursor)
         elif event.button() == Qt.LeftButton:
+            print(self.boundary['status'])
             if self.boundary['status'] == 'editing':
                 self.editBoundaryMousePress(event)
             elif self.hover_on_focus:
                 self.drag_to_edit = self.mapToScene(event.pos())
             else:
-                self.drag_to_draw = self.mapToScene(event.pos())
+                if self.parent.add_mode == "line" or self.boundary['status'] == 'setting':
+                    self.drag_to_draw = self.mapToScene(event.pos())
+                elif self.parent.add_mode == "text":
+                    print("text pressed")
+                    x = self.mapToScene(event.pos()).x()
+                    y = self.mapToScene(event.pos()).y()
+                    self.newText(x, y)
                 self.clearFocusPts()
             if self.boundary['status'] == "setting":
                 self.boundary['status'] = "dragging"
@@ -141,6 +150,8 @@ class QPhotoViewer(QGraphicsView):
     def mouseReleaseEvent(self, event):
         if self.drag_to_move:
             self.drag_to_move = None
+        elif self.boundary['status'] == 'editing':
+            self.editBoundaryMouseRelease(event)
         elif self.drag_to_draw:
             x1 = self.drag_to_draw.x()
             x2 = self.mapToScene(event.pos()).x()
@@ -150,7 +161,8 @@ class QPhotoViewer(QGraphicsView):
                 self.boundary['coor'] = (x1, y1, x2, y2)
                 self.endSetBoundary()
             elif self.draw_shape == "line":
-                self.newMVA(x1, y1, x2, y2)
+                if self.parent.add_mode == "line":
+                    self.newMVA(x1, y1, x2, y2)
             self.drag_to_draw = None
         elif self.drag_to_edit:
             self.clearSceneDraw()
@@ -178,7 +190,8 @@ class QPhotoViewer(QGraphicsView):
             self.clearSceneDraw()
 
             if self.draw_shape == "line":
-                self._scene.addLine(QLineF(x1, y1, x2, y2), pen=QPen(LINE_COLOR, LINE_WIDTH))
+                if self.parent.add_mode == "line":
+                    self._scene.addLine(QLineF(x1, y1, x2, y2), pen=QPen(LINE_COLOR, LINE_WIDTH))
             elif self.draw_shape == "rect":
                 self._scene.addRect(x1, y1, x2 - x1, y2 - y1, pen=QPen(LINE_COLOR, LINE_WIDTH))
                 self.selectLines(x1, y1, x2, y2)
@@ -218,6 +231,10 @@ class QPhotoViewer(QGraphicsView):
         for pt in self.lines:
             _l.append(QLineF(*pt))
         painter.drawLines(_l)
+
+        painter.setFont(QFont("times", 20))
+        for x, y, s in self.texts:
+            painter.drawText(x, y, s)
 
         if self.show_loaded_mva:
             pen = QPen(Qt.red, LINE_WIDTH, Qt.DashLine)
@@ -303,6 +320,9 @@ class QPhotoViewer(QGraphicsView):
     def editBoundary(self, val):
         if val:
             self.boundary['status'] = 'editing'
+            self.showBoundary(True)
+            self.parent.MainWindow.show_ll.setChecked(True)
+            self.update()
         else:
             if self.boundary['rect'] is None:
                 self.boundary['status'] = 'unset'
@@ -310,7 +330,19 @@ class QPhotoViewer(QGraphicsView):
                 self.boundary['status'] = 'set'
 
     def editBoundaryMousePress(self, event):
-        self.edit_boundary = {'pt': self.editBoundaryPt(event), 'coor': self.mapToScene(event.pos())}
+        if self.edit_boundary is None:
+            pt = self.editBoundaryPt(event)
+            if pt:
+                self.edit_boundary = {'pt': self.editBoundaryPt(event)}
+
+    def editBoundaryMouseRelease(self, event):
+        if self.edit_boundary is not None:
+            self.edit_boundary = None
+            self.endSetBoundary(False)
+            self.editBoundary(False)
+            self.showBoundary(True)
+            self.boundary['status'] = 'editing'
+            # self.parent.MainWindow.edit_ll.setChecked(False)
 
     def editBoundaryMouseMove(self, event):
         if self.edit_boundary is None:
@@ -318,28 +350,27 @@ class QPhotoViewer(QGraphicsView):
             if pt in ['x1', 'x2']:
                 cursor = Qt.SplitHCursor
             elif pt in ['y1', 'y2']:
-                cursor = Qt.SplitHCursor
+                cursor = Qt.SplitVCursor
             else:
                 cursor = Qt.ArrowCursor
             self.setCursor(cursor)
         else:
-            delta_x = self.mapToScene(event.pos()).x() - self.edit_boundary['coor'].x()
-            delta_y = self.mapToScene(event.pos()).y() - self.edit_boundary['coor'].y()
+            x = self.mapToScene(event.pos()).x()
+            y = self.mapToScene(event.pos()).y()
             x1 = self.boundary['coor'][0]
             y1 = self.boundary['coor'][1]
             x2 = self.boundary['coor'][2]
             y2 = self.boundary['coor'][3]
             if self.edit_boundary['pt'] == 'x1':
-                x1 += delta_x
+                x1 = x
             elif self.edit_boundary['pt'] == 'x2':
-                y1 = self.boundary['coor'][1]
-                x2 += delta_x
+                x2  = x
             elif self.edit_boundary['pt'] == 'y1':
-                y1 += delta_y
+                y1 = y
             elif self.edit_boundary['pt'] == 'y2':
-                y2 += delta_y
+                y2 = y
             self.boundary['coor'] = (x1, y1, x2, y2)
-            self.drawBoundary(False)
+            # self.drawBoundary(False)
 
 
     def editBoundaryPt(self, event):
@@ -415,13 +446,13 @@ class QPhotoViewer(QGraphicsView):
         h = self.boundary['coor'][3] - y
         self.boundary['rect'] = QGraphicsRectItem(x, y, w, h)
         self._scene.addItem(self.boundary['rect'])
-        pen = QPen(QBrush(QColor(255, 210, 210, 0)), LINE_WIDTH, Qt.DashDotDotLine)
+        pen = QPen(QBrush(QColor(255, 210, 210, 127)), LINE_WIDTH, Qt.DashDotDotLine)
         self.boundary['rect'].setPen(pen)
         if editLL:
             result = self.set_lat_long.exec_()
             self.parent.MainWindow.show_ll.setChecked(True)
             self.showBoundary(True)
-            
+
     def showBoundary(self, val):
         if self.boundary['status'] != 'unset':
             self.boundary['show'] = val
@@ -496,22 +527,54 @@ class QPhotoViewer(QGraphicsView):
         return utils.coorToLat(y, bl1, bl2, by1, by2, "N")
 
     def newMVA(self, x1, y1, x2, y2):
-        # self.lines.append((x1, y1, x2, y2))
         pt1 = self.coorToLatLong(x1, y1)
         pt2 = self.coorToLatLong(x2, y2)
         new_line = f"{self.parent.edit_prefix.text()} {pt1[0]} {pt1[1]} {pt2[0]} {pt2[1]}"
         self.parent.new_mva_lines.appendPlainText(new_line)
 
-    def newMvaChanged(self):
-        self.newMVATxt(self.parent.new_mva_lines.toPlainText())
+    def newText(self, x, y):
+        pt = self.coorToLatLong(x, y)
+        new_line = f"{pt[0]}:{pt[1]}:{self.parent.edit_prefix.text()}:\n"
+        # self.parent.new_mva_lines.prependPlainText(new_line)
+        txt = self.parent.new_mva_lines.toPlainText()
+        prefix_text = self.parent.edit_prefix.text()
+        txt = txt.split("\n")
+        txt.sort(key=lambda x: x.startswith(prefix_text))
+        txt = "\n".join(txt)
+        txt = new_line + txt
+        self.parent.new_mva_lines.setPlainText(txt)
+        self.parent.new_mva_lines.setFocus()
+        self.parent.new_mva_lines.moveCursor(QTextCursor.EndOfLine)
+        self.parent.new_mva_lines.moveCursor(QTextCursor.NextRow)
 
-    def newMVATxt(self, txt):
+    def newMvaChanged(self):
+        txt = self.parent.new_mva_lines.toPlainText()
+        self.newMVAFomTxt(txt)
+
+    def newMVAFomTxt(self, txt):
         self.lines = []
+        mva = []
+        text = []
         if txt:
             try:
-                mva = [tuple(line.split()[1:]) for line in txt.strip("\n").split("\n")]
+                for line in txt.strip("\n").split("\n"):
+                    if line.startswith(": -") or line.startswith("; -"):
+                        continue
+                    elif len(line.split()) == 5:
+                        mva.append(line.split()[1:])
+                    elif len(line.split(":")) == 4:
+                        text.append(line.split(":"))
                 for line in mva:
                     self.lines.append((*self.latLongToCoor(line[0], line[1]), *self.latLongToCoor(line[2], line[3])))
+                for line in text:
+                    self.texts.append((*self.latLongToCoor(line[0], line[1]), line[3]))
             except:
                 import traceback
                 traceback.print_exc()
+
+    def dragEnterEvent(self, event):
+        print("Hello world")
+
+    def dropEvent(self, event):
+        print("Hello world2")
+    
