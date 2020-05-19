@@ -124,7 +124,7 @@ class QPhotoViewer(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            self.drag_to_move = event.pos()
+            self.drag_to_move = self.mapToScene(event.pos())
             self.setCursor(Qt.ClosedHandCursor)
         elif event.button() == Qt.LeftButton:
             if self.boundary['status'] == 'editing':
@@ -508,6 +508,10 @@ class QPhotoViewer(QGraphicsView):
     def newMVATxt(self, txt):
         self.lines = []
         if txt:
-            mva = [tuple(line.split()[1:]) for line in txt.strip("\n").split("\n")]
-            for line in mva:
-                self.lines.append((*self.latLongToCoor(line[0], line[1]), *self.latLongToCoor(line[2], line[3])))
+            try:
+                mva = [tuple(line.split()[1:]) for line in txt.strip("\n").split("\n")]
+                for line in mva:
+                    self.lines.append((*self.latLongToCoor(line[0], line[1]), *self.latLongToCoor(line[2], line[3])))
+            except:
+                import traceback
+                traceback.print_exc()
